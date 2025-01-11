@@ -5,7 +5,9 @@
 // #include <Adafruit_SSD1306.h>
 #include "tm1637display.h"
 #include <U8glib.h>
+#include <EEPROM.h>
 
+const int eepromAddress = 0; // Адрес в EEPROM для хранения значения
 int led_red = 3;
 int button_pin = 2;     // пин кнопки
 
@@ -137,6 +139,12 @@ void loop () {
   if (loading && millis() >= 10000) {
     loading = false;
     detachInterrupt(button_pin);
+    if(buttonPressCount > 0){
+      EEPROM.write(eepromAddress, buttonPressCount);
+    }
+    else{
+      buttonPressCount = EEPROM.read(eepromAddress);
+    }
     displayCode();
   }
   //мигаем диодом при нажатии кнопки во время программирования контроллера
