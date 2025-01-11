@@ -1,13 +1,13 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+// #include <Adafruit_GFX.h>
+// #include <Adafruit_SSD1306.h>
 #include "tm1637display.h"
 #include <U8glib.h>
 
 int led_red = 3;
-int button_pin = 5;     // пин кнопки
+int button_pin = 2;     // пин кнопки
 
 /**************/
 // Define the display connections pins:
@@ -26,13 +26,6 @@ void u8g_prepare(void) {
   My_u8g_Panel.setDefaultForegroundColor();
   My_u8g_Panel.setFontPosTop();
 }
-void draw(void) {
-  u8g_prepare();
-  My_u8g_Panel.drawStr( 0, 10, "Welcome to");
-  My_u8g_Panel.drawStr( 10, 30, "Dino!!");
-  My_u8g_Panel.drawStr( 0, 50, "Push to begin");
-
-}
 
 //######################
 #define SCREEN_WIDTH        128 // OLED display width, in pixels
@@ -46,7 +39,44 @@ void draw(void) {
 /* переменные */
 boolean lastButten = LOW;     // предыдущее состояние кнопки
 boolean currentButten = LOW;  // текущее состояние кнопки
-boolean ledOn = false;        // текущее состояние свтодиода
+// boolean displayCode = false; // флаг для отображения количества нажатий кнопок (кода устройства)
+boolean loading = true; // флаг для отображения загрузки
+const unsigned long debounceDelay = 500; // задержка для устранения дребезга
+
+void string2display(char* msg){
+  OurDisplay.clear();
+  My_u8g_Panel.firstPage();
+    do {
+    u8g_prepare();
+    My_u8g_Panel.drawStr( 5, 10, msg);
+  } while ( My_u8g_Panel.nextPage() ); 
+}
+
+void displayWrite (int num) {
+  OurDisplay.clear();
+  My_u8g_Panel.firstPage();
+    do {
+    u8g_prepare();
+    String code = "code:" + num;
+    My_u8g_Panel.drawStr( 5, 10, "code:");
+    My_u8g_Panel.drawStr( 40, 10, String(num).c_str());
+  } while ( My_u8g_Panel.nextPage() );  
+  
+}
+void blink(uint8_t pin, int times, int delayTime) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(pin, HIGH);
+    delay(delayTime);
+    digitalWrite(pin, LOW);
+    delay(delayTime);
+  }
+}
+
+
+volatile uint32_t debounce;
+volatile uint8_t buttonPressCount = 0;
+
+// boolean ledOn = false;        // текущее состояние свтодиода
 boolean debvance (boolean last) //убираем дребизг
 {
   boolean current = digitalRead (button_pin); // считываем данные с кнопки
@@ -58,68 +88,72 @@ boolean debvance (boolean last) //убираем дребизг
   }
   return current;
 }
+volatile unsigned long lastDebounceTime = 0;
+volatile boolean interrupted = false;
+
+void handleButtonPress() {
+  interrupted = true;
+  unsigned long currentTime = millis();
+  if ((currentTime - lastDebounceTime) > debounceDelay) {
+    buttonPressCount++;
+    lastDebounceTime = currentTime;
+  }
+}
 
 void setup() {
   Serial.begin(9600); // Start serial monitor
   OurDisplay.setBrightness(7);
   OurDisplay.clear();
-
-  // if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-  //   Serial.println(F("SSD1306 allocation failed"));
-  //   for(;;);
-  // }
   pinMode(button_pin, INPUT); // Инициализируем цифровой вход/выход в режиме входа.
   pinMode(led_red, OUTPUT); // set pin 13 as output pin
    My_u8g_Panel.firstPage();
-   do{
-  u8g_prepare();
-  My_u8g_Panel.drawStr( 0, 10, "press any key");
-   }
-  while ( My_u8g_Panel.nextPage() );
-  // Serial.println(F("SSD1306 ready"));
-  // display.setTextSize(1);
-  // display.setTextColor(SSD1306_WHITE);
-  // display.setCursor(2,50);
-  // display.println(F("GAMEOVER"));
-  // display.display();
-  // delay(1000);
-}
-void drawScore() {
-  OurDisplay.showNumberDecEx(9876);
-  // display.setTextSize(1);
-  // display.setTextColor(SSD1306_WHITE);
-  // display.setCursor(2,2);
-  // display.print(F("Score:"));
-  // display.println(98765);
-  // display.display();
-}
-// void ShowScore() {
-//   display.clearDisplay();
-//   display.setTextSize(1);
-//   display.setTextColor(SSD1306_WHITE);
-//   display.setCursor(2,2);
-//   display.print(F("Score:"));
-//   display.println(currentButten == HIGH? "HIGH" : "LOW");
-//   display.display();
-// }
-
-void loop () {
-  // drawScore();
-  currentButten = debvance(lastButten);
-   if (lastButten != currentButten) { // Если кнопка нажата 
-      // drawScore();
-      digitalWrite(led_red, currentButten);// зажигаем светодиод
-      lastButten = currentButten;
-      String str1 = "switch to ";
-      Serial.print(str1);
-      String str2 = currentButten == HIGH? "HIGH" : "LOW";
-      Serial.println(str2);
+  attachInterrupt(digitalPinToInterrupt(button_pin), handleButtonPress, RISING); // Настройка прерывания на падение сигнала
+  //выводим однажды подсказуку о программировании кода
   My_u8g_Panel.firstPage();
   do {
-    // draw();
-  u8g_prepare();
-  My_u8g_Panel.drawStr( 0, 10, currentButten == HIGH? "HIGH" : "LOW");
-  } while ( My_u8g_Panel.nextPage() );
- }
+    u8g_prepare();
+    My_u8g_Panel.drawStr( 5, 10, "programming code");
+    My_u8g_Panel.drawStr( 5, 30, "for 30 sec");
+  } while ( My_u8g_Panel.nextPage() );  
+  Serial.println("programming code for 30 sec");
+}
+void displayCode(){
+    displayWrite(buttonPressCount);
+    Serial.println(buttonPressCount);
+    blink(led_red, buttonPressCount, 800);
+    string2display("code is set");
+}
+boolean wasClicked(){
+   currentButten = debvance(lastButten);
+    if (lastButten != currentButten) { // Если кнопка нажата 
+      digitalWrite(led_red, currentButten);// зажигаем светодиод
+      lastButten = currentButten;
+      return true;
+    }
+    return false;
+}
+void loop () {
+  // чтение прерывание только после загрузки контроллера
+  if (loading && millis() >= 10000) {
+    loading = false;
+    detachInterrupt(button_pin);
+    displayCode();
+  }
+  //мигаем диодом при нажатии кнопки во время программирования контроллера
+  if(loading){
+    if (wasClicked()){
+      digitalWrite(led_red, currentButten);
+    }
+  }
+  //рабочий цикл контроллера
+  if(!loading ) {
+    currentButten = debvance(lastButten);
+    if (lastButten != currentButten) { // Если кнопка нажата 
+      digitalWrite(led_red, currentButten);// зажигаем светодиод
+      lastButten = currentButten;
+      string2display(currentButten ? "button pressed" : "button released");
+    }
+  }
   
 }
+
